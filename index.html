@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Money Tracker</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin:0; background:#f6f7fb; color:#111; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 16px; padding-bottom: 80px; }
+    .card { background:#fff; border-radius:14px; padding:14px; box-shadow:0 6px 18px rgba(0,0,0,.07); margin-bottom:12px; }
+    .header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    h1 { margin:0; font-size:20px; }
+    .muted { opacity:.7; font-size:13px; margin-top:4px; }
+    .totalBox { text-align:right; min-width: 220px; }
+    .totalLabel { font-size:12px; opacity:.7; }
+    .totalValue { font-size:28px; font-weight:800; margin-top:4px; }
+
+    .tabs { display:flex; gap:10px; }
+    .tab { flex:1; padding:10px 12px; border-radius:12px; border:1px solid #ddd; background:#fff; font-weight:700; cursor:pointer; }
+    .tab.active { border-color:#1a73e8; background:#e8eefc; color:#1a73e8; }
+
+    .panel { display:none; }
+    .panel.active { display:block; }
+
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    @media (max-width: 720px) { .row { grid-template-columns:1fr; } .totalBox { text-align:left; } }
+
+    label { font-size:12px; opacity:.75; display:block; margin-bottom:4px; }
+    input, select, button { width:100%; padding:10px; border-radius:10px; border:1px solid #ddd; font-size:14px; }
+    button { border:none; background:#1a73e8; color:#fff; font-weight:700; cursor:pointer; }
+    button.secondary { background:#e8eefc; color:#1a73e8; border:1px solid #cfe0ff; }
+    button.danger { background:#ffe8ea; color:#b42318; border:1px solid #ffc7cd; }
+    button.good { background:#e8f5e9; color:#1b5e20; border:1px solid #c8e6c9; }
+    button.bad { background:#ffebee; color:#b71c1c; border:1px solid #ffcdd2; }
+
+    .actions { display:flex; gap:10px; flex-wrap:wrap; }
+    .actions > button { width:auto; }
+
+    .gridWrap { overflow:auto; border:1px solid #eee; border-radius:12px; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th, td { text-align:left; padding:10px 8px; border-bottom:1px solid #eee; font-size:14px; white-space:nowrap; }
+    th { font-size:12px; opacity:.7; }
+    td.right, th.right { text-align:right; }
+    tr.selectable { cursor:pointer; }
+    tr.selected { background:#f2f7ff; outline:2px solid rgba(26,115,232,.25); outline-offset:-2px; }
+
+    .pill { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; border:1px solid #eee; }
+    .pill.in { background:#e8f5e9; color:#1b5e20; border-color:#c8e6c9; }
+    .pill.out { background:#ffebee; color:#b71c1c; border-color:#ffcdd2; }
+    .pill.plan { background:#fff7e6; color:#8a5a00; border-color:#ffe0a3; }
+    .pill.bought { background:#e8eefc; color:#1a73e8; border-color:#cfe0ff; }
+
+    .footerBar {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      background: rgba(246,247,251,.92);
+      backdrop-filter: blur(8px);
+      border-top:1px solid #e6e6e6;
+      padding:10px 12px;
+    }
+    .footerInner { max-width: 980px; margin:0 auto; display:flex; gap:10px; flex-wrap:wrap; justify-content:space-between; align-items:center; }
+    .footerInner .actions { justify-content:flex-end; }
+    .small { font-size:12px; opacity:.7; }
+
+    /* Simple modal */
+    .backdrop { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; padding:16px; }
+    .backdrop.show { display:flex; }
+    .modal { background:#fff; border-radius:14px; padding:14px; width:min(520px, 100%); box-shadow:0 14px 40px rgba(0,0,0,.25); }
+    .modal h2 { margin:0 0 10px; font-size:16px; }
+    .modal .actions { justify-content:flex-end; margin-top:12px; }
+    .error { margin-top:8px; color:#b71c1c; font-size:12px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="header">
+        <div>
+          <h1>Money Tracker</h1>
+          <div class="muted">OFFLINE manual tracker. Data saved on this device only.</div>
+        </div>
+        <div class="totalBox">
+          <div class="totalLabel">Total Money</div>
+          <div class="totalValue" id="lblTotal">₱0.00</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="tabs">
+        <button class="tab active" data-tab="wallets">Wallets</button>
+        <button class="tab" data-tab="transactions">Transactions</button>
+        <button class="tab" data-tab="wants">Wants</button>
+      </div>
+    </div>
+
+    <!-- Wallets -->
+    <div class="panel active" id="tab-wallets">
+      <div class="card">
+        <div class="header">
+          <div>
+            <h1 style="margin:0;font-size:16px;">Wallets</h1>
+            <div class="muted">Manual update ng balances. Total auto-refresh.</div>
+          </div>
+          <div class="actions">
+            <button id="btnAddWallet">Add Wallet</button>
+            <button class="secondary" id="btnEditBalance">Edit Balance</button>
+            <button class="secondary" id="btnRenameWallet">Rename</button>
+            <button class="danger" id="btnDeleteWallet">Delete</button>
+          </div>
+        </div>
+
+        <div class="gridWrap">
+          <table id="gridWallets">
+            <thead>
+              <tr>
+                <th class="hidden">Id</th>
+                <th>Name</th>
+                <th class="right">Balance</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="muted" id="walletHint" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <!-- Transactions -->
+    <div class="panel" id="tab-transactions">
+      <div class="card">
+        <div class="header">
+          <div>
+            <h1 style="margin:0;font-size:16px;">Transactions</h1>
+            <div class="muted">Log lang. Wallet balances do NOT auto-change.</div>
+          </div>
+          <div style="min-width:280px;">
+            <label>Date</label>
+            <input type="date" id="txDate" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <div>
+            <div class="card" style="margin:0; box-shadow:none; border:1px solid #eee;">
+              <div class="muted">Spent (selected date)</div>
+              <div style="font-size:22px;font-weight:800;" id="lblSpent">₱0.00</div>
+            </div>
+          </div>
+          <div class="actions" style="align-items:end; justify-content:flex-end;">
+            <button class="bad" id="btnAddExpense">Add Expense</button>
+            <button class="good" id="btnAddIncome">Add Income</button>
+            <button class="secondary" id="btnDeleteTx">Delete Selected</button>
+          </div>
+        </div>
+
+        <div class="gridWrap" style="margin-top:12px;">
+          <table id="gridTx">
+            <thead>
+              <tr>
+                <th class="hidden">Id</th>
+                <th>Date</th>
+                <th>Wallet</th>
+                <th>Type</th>
+                <th class="right">Amount</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="muted" id="txHint" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <!-- Wants -->
+    <div class="panel" id="tab-wants">
+      <div class="card">
+        <div class="header">
+          <div>
+            <h1 style="margin:0;font-size:16px;">Wants</h1>
+            <div class="muted">Planned vs Bought.</div>
+          </div>
+          <div class="actions">
+            <button id="btnAddWant">Add Want</button>
+            <button class="secondary" id="btnMarkBought">Mark Bought</button>
+            <button class="danger" id="btnDeleteWant">Delete</button>
+          </div>
+        </div>
+
+        <div class="gridWrap">
+          <table id="gridWants">
+            <thead>
+              <tr>
+                <th class="hidden">Id</th>
+                <th>Name</th>
+                <th class="right">Price</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="muted" id="wantHint" style="margin-top:10px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom actions -->
+  <div class="footerBar">
+    <div class="footerInner">
+      <div class="small">Backup/Restore works by file: money-tracker-backup.json</div>
+      <div class="actions">
+        <button class="secondary" id="btnBackup">Backup (Save Data)</button>
+        <button class="secondary" id="btnRestore">Restore (Load Data)</button>
+        <button class="danger" id="btnClearAll">Clear All</button>
+        <input id="filePicker" type="file" accept="application/json" hidden />
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div class="backdrop" id="backdrop">
+    <div class="modal">
+      <h2 id="mTitle">Dialog</h2>
+      <div id="mBody"></div>
+      <div class="actions">
+        <button class="secondary" id="mCancel">Cancel</button>
+        <button id="mOk">OK</button>
+      </div>
+      <div class="error" id="mError"></div>
+    </div>
+  </div>
+
+<script>
+  const KEY = "money_tracker_tabs_v1";
+  let state = { wallets: [], transactions: [], wants: [] };
+
+  let selectedWalletId = null;
+  let selectedTxId = null;
+  let selectedWantId = null;
+
+  const el = (id) => document.getElementById(id);
+  const fmt = (n) => new Intl.NumberFormat("en-PH",{style:"currency",currency:"PHP"}).format(Number(n||0));
+
+  function todayISO(){
+    const d=new Date();
+    const yyyy=d.getFullYear();
+    const mm=String(d.getMonth()+1).padStart(2,"0");
+    const dd=String(d.getDate()).padStart(2,"0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
+  function load(){
+    const raw = localStorage.getItem(KEY);
+    state = raw ? JSON.parse(raw) : { wallets: [], transactions: [], wants: [] };
+    seedIfEmpty();
+  }
+
+  function seedIfEmpty(){
+    if (state.wallets && state.wallets.length) return;
+    state.wallets = [
+      { id: Date.now()+1, name: "GCash", balance: 0 },
+      { id: Date.now()+2, name: "GoTyme", balance: 0 },
+      { id: Date.now()+3, name: "Cash", balance: 0 }
+    ];
+    save();
+  }
+
+  // ---------- Tabs ----------
+  document.querySelectorAll(".tab").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const tab = btn.dataset.tab;
+      document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active", b===btn));
+      document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+      el("tab-"+tab).classList.add("active");
+      clearSelections();
+    });
+  });
+
+  function clearSelections(){
+    selectedWalletId = null;
+    selectedTxId = null;
+    selectedWantId = null;
+    clearRowSelection("gridWallets");
+    clearRowSelection("gridTx");
+    clearRowSelection("gridWants");
+  }
+  function clearRowSelection(gridId){
+    const tb = el(gridId).querySelector("tbody");
+    tb.querySelectorAll("tr").forEach(tr=>tr.classList.remove("selected"));
+  }
+
+  // ---------- Modal helpers ----------
+  function showModal(title, fields, okText="OK"){
+    el("mTitle").textContent = title;
+    el("mError").textContent = "";
+    const body = el("mBody");
+    body.innerHTML = "";
+
+    for (const f of fields){
+      const wrap = document.createElement("div");
+      wrap.style.marginBottom = "10px";
+
+      const lab = document.createElement("label");
+      lab.textContent = f.label;
+      wrap.appendChild(lab);
+
+      let input;
+      if (f.type === "select"){
+        input = document.createElement("select");
+        for (const opt of f.options){
+          const o = document.createElement("option");
+          o.value = String(opt.value);
+          o.textContent = opt.text;
+          input.appendChild(o);
+        }
+        if (f.value != null) input.value = String(f.value);
+      } else {
+        input = document.createElement("input");
+        input.type = f.type || "text";
+        if (f.placeholder) input.placeholder = f.placeholder;
+        if (f.step) input.step = f.step;
+        if (f.inputMode) input.inputMode = f.inputMode;
+        input.value = f.value ?? "";
+      }
+      input.id = f.id;
+      wrap.appendChild(input);
+      body.appendChild(wrap);
+    }
+
+    el("mOk").textContent = okText;
+    el("backdrop").classList.add("show");
+
+    return new Promise(resolve=>{
+      const ok = () => { cleanup(); resolve(true); };
+      const cancel = () => { cleanup(); resolve(false); };
+
+      const okBtn = el("mOk");
+      const cancelBtn = el("mCancel");
+
+      function cleanup(){
+        okBtn.removeEventListener("click", ok);
+        cancelBtn.removeEventListener("click", cancel);
+        el("backdrop").classList.remove("show");
+      }
+
+      okBtn.addEventListener("click", ok);
+      cancelBtn.addEventListener("click", cancel);
+
+      const first = fields?.[0]?.id ? el(fields[0].id) : null;
+      if (first) setTimeout(()=>first.focus(), 0);
+    });
+  }
+  function modalError(msg){ el("mError").textContent = msg; }
+  function val(id){ return (el(id).value ?? "").trim(); }
+
+  // ---------- Wallets ----------
+  function totalMoney(){
+    return state.wallets.reduce((sum,w)=>sum + Number(w.balance||0), 0);
+  }
+  function refreshTotal(){
+    el("lblTotal").textContent = fmt(totalMoney());
+  }
+
+  function renderWallets(){
+    const tbody = el("gridWallets").querySelector("tbody");
+    tbody.innerHTML = "";
+    const wallets = [...state.wallets].sort((a,b)=>a.name.localeCompare(b.name));
+
+    for (const w of wallets){
+      const tr = document.createElement("tr");
+      tr.className = "selectable";
+      tr.dataset.id = w.id;
+      tr.innerHTML = `
+        <td class="hidden">${w.id}</td>
+        <td>${escapeHtml(w.name)}</td>
+        <td class="right">${fmt(w.balance)}</td>
+      `;
+      tr.addEventListener("click", ()=>{
+        clearRowSelection("gridWallets");
+        tr.classList.add("selected");
+        selectedWalletId = w.id;
+      });
+      tbody.appendChild(tr);
+    }
+
+    el("walletHint").textContent = wallets.length
+      ? "Select a wallet row before Edit/Rename/Delete."
+      : "No wallets yet. Click Add Wallet.";
+
+    refreshTotal();
+  }
+
+  async function addWallet(){
+    const ok = await showModal("Add Wallet", [
+      {id:"w_name", label:"Name", type:"text", placeholder:"e.g. GCash"},
+      {id:"w_bal", label:"Initial balance", type:"number", inputMode:"decimal", step:"0.01", placeholder:"e.g. 0"}
+    ], "Add");
+    if (!ok) return;
+
+    const name = val("w_name");
+    const bal = Number(val("w_bal") || "0");
+
+    if (!name){ modalError("Name is required."); return addWallet(); }
+    if (!Number.isFinite(bal)){ modalError("Invalid balance."); return addWallet(); }
+    if (state.wallets.some(w=>w.name.toLowerCase() === name.toLowerCase())){
+      alert("Wallet name already exists.");
+      return;
+    }
+
+    state.wallets.push({ id: Date.now(), name, balance: bal });
+    save();
+    renderWallets();
+    renderTransactions(); // wallet names used
+  }
+
+  async function editBalance(){
+    if (!selectedWalletId) return alert("Select a wallet first.");
+    const w = state.wallets.find(x=>x.id===selectedWalletId);
+    if (!w) return alert("Wallet not found.");
+
+    const ok = await showModal("Edit Balance", [
+      {id:"b_name", label:"Wallet", type:"text", value:w.name},
+      {id:"b_bal", label:"Balance", type:"number", inputMode:"decimal", step:"0.01", value:String(w.balance ?? 0)}
+    ], "Save");
+    if (!ok) return;
+
+    const bal = Number(val("b_bal"));
+    if (!Number.isFinite(bal)) return alert("Invalid number.");
+
+    w.balance = bal;
+    save();
+    renderWallets();
+  }
+
+  async function renameWallet(){
+    if (!selectedWalletId) return alert("Select a wallet first.");
+    const w = state.wallets.find(x=>x.id===selectedWalletId);
+    if (!w) return alert("Wallet not found.");
+
+    const ok = await showModal("Rename Wallet", [
+      {id:"r_name", label:"New name", type:"text", value:w.name}
+    ], "Rename");
+    if (!ok) return;
+
+    const newName = val("r_name");
+    if (!newName) return alert("Name is required.");
+    if (state.wallets.some(x=>x.id!==w.id && x.name.toLowerCase()===newName.toLowerCase())){
+      alert("Wallet name already exists.");
+      return;
+    }
+
+    w.name = newName;
+    save();
+    renderWallets();
+    renderTransactions();
+  }
+
+  function deleteWallet(){
+    if (!selectedWalletId) return alert("Select a wallet first.");
+    if (!confirm("Delete selected wallet? Transactions will show (deleted wallet).")) return;
+
+    state.wallets = state.wallets.filter(w=>w.id!==selectedWalletId);
+    selectedWalletId = null;
+    save();
+    renderWallets();
+    renderTransactions();
+  }
+
+  // ---------- Transactions ----------
+  function renderTransactions(){
+    const date = el("txDate").value || todayISO();
+    const tbody = el("gridTx").querySelector("tbody");
+    tbody.innerHTML = "";
+
+    const walletMap = new Map(state.wallets.map(w=>[w.id, w.name]));
+    const tx = state.transactions.filter(t=>t.date === date).sort((a,b)=>a.id-b.id);
+
+    let spent = 0;
+
+    for (const t of tx){
+      const tr = document.createElement("tr");
+      tr.className = "selectable";
+      tr.dataset.id = t.id;
+
+      const wName = walletMap.get(t.walletId) || "(deleted wallet)";
+      const type = String(t.type||"").toLowerCase();
+      if (type === "expense") spent += Number(t.amount||0);
+
+      const pill = type === "income"
+        ? `<span class="pill in">income</span>`
+        : `<span class="pill out">expense</span>`;
+
+      tr.innerHTML = `
+        <td class="hidden">${t.id}</td>
+        <td>${escapeHtml(t.date)}</td>
+        <td>${escapeHtml(wName)}</td>
+        <td>${pill}</td>
+        <td class="right">${fmt(t.amount)}</td>
+        <td>${escapeHtml(t.note||"")}</td>
+      `;
+
+      tr.addEventListener("click", ()=>{
+        clearRowSelection("gridTx");
+        tr.classList.add("selected");
+        selectedTxId = t.id;
+      });
+
+      tbody.appendChild(tr);
+    }
+
+    el("lblSpent").textContent = fmt(spent);
+    el("txHint").textContent = "Select a row to delete, if needed.";
+  }
+
+  async function addTransaction(type){
+    if (!state.wallets.length) return alert("Create a wallet first.");
+    const date = el("txDate").value || todayISO();
+    const walletsSorted = [...state.wallets].sort((a,b)=>a.name.localeCompare(b.name));
+
+    const ok = await showModal(type==="income" ? "Add Income" : "Add Expense", [
+      { id:"t_wallet", label:"Wallet", type:"select", options: walletsSorted.map(w=>({value:w.id,text:w.name})), value: walletsSorted[0].id },
+      { id:"t_amount", label:"Amount", type:"number", inputMode:"decimal", step:"0.01", placeholder:"e.g. 150" },
+      { id:"t_note", label:"Note", type:"text", placeholder:"optional" },
+      { id:"t_date", label:"Date", type:"date", value: date }
+    ], "Add");
+    if (!ok) return;
+
+    const walletId = Number(val("t_wallet"));
+    const amount = Number(val("t_amount"));
+    const note = val("t_note");
+    const txDate = (val("t_date") || date).slice(0,10);
+
+    if (!Number.isFinite(amount) || amount <= 0) return alert("Amount must be > 0.");
+    if (!txDate) return alert("Date is required.");
+
+    state.transactions.push({ id: Date.now(), walletId, type, amount, date: txDate, note });
+    save();
+    renderTransactions();
+  }
+
+  function deleteSelectedTx(){
+    if (!selectedTxId) return alert("Select a transaction first.");
+    if (!confirm("Delete selected transaction?")) return;
+
+    state.transactions = state.transactions.filter(t=>t.id!==selectedTxId);
+    selectedTxId = null;
+    save();
+    renderTransactions();
+  }
+
+  // ---------- Wants ----------
+  function renderWants(){
+    const tbody = el("gridWants").querySelector("tbody");
+    tbody.innerHTML = "";
+
+    const wants = [...state.wants].sort((a,b)=>a.name.localeCompare(b.name));
+    for (const w of wants){
+      const tr = document.createElement("tr");
+      tr.className = "selectable";
+      tr.dataset.id = w.id;
+
+      const pill = w.status === "bought"
+        ? `<span class="pill bought">bought</span>`
+        : `<span class="pill plan">planned</span>`;
+
+      tr.innerHTML = `
+        <td class="hidden">${w.id}</td>
+        <td>${escapeHtml(w.name)}</td>
+        <td class="right">${fmt(w.price)}</td>
+        <td>${pill}</td>
+      `;
+
+      tr.addEventListener("click", ()=>{
+        clearRowSelection("gridWants");
+        tr.classList.add("selected");
+        selectedWantId = w.id;
+      });
+
+      tbody.appendChild(tr);
+    }
+
+    el("wantHint").textContent = wants.length
+      ? "Select a want row before Mark Bought/Delete."
+      : "No wants yet. Click Add Want.";
+  }
+
+  async function addWant(){
+    const ok = await showModal("Add Want", [
+      { id:"wn_name", label:"Name", type:"text", placeholder:"e.g. Earbuds" },
+      { id:"wn_price", label:"Price", type:"number", inputMode:"decimal", step:"0.01", placeholder:"e.g. 999" },
+      { id:"wn_status", label:"Status", type:"select", options:[
+        {value:"planned", text:"planned"},
+        {value:"bought", text:"bought"}
+      ], value:"planned" }
+    ], "Add");
+    if (!ok) return;
+
+    const name = val("wn_name");
+    const price = Number(val("wn_price"));
+    const status = val("wn_status");
+
+    if (!name) return alert("Name is required.");
+    if (!Number.isFinite(price) || price <= 0) return alert("Price must be > 0.");
+
+    state.wants.push({ id: Date.now(), name, price, status });
+    save();
+    renderWants();
+  }
+
+  function markBought(){
+    if (!selectedWantId) return alert("Select a want first.");
+    const w = state.wants.find(x=>x.id===selectedWantId);
+    if (!w) return alert("Want not found.");
+    w.status = "bought";
+    save();
+    renderWants();
+  }
+
+  function deleteWant(){
+    if (!selectedWantId) return alert("Select a want first.");
+    if (!confirm("Delete selected want?")) return;
+    state.wants = state.wants.filter(w=>w.id!==selectedWantId);
+    selectedWantId = null;
+    save();
+    renderWants();
+  }
+
+  // ---------- Backup / Restore / Clear ----------
+  function backup(){
+    const payload = {
+      app: "Money Tracker",
+      version: 1,
+      savedAt: new Date().toISOString(),
+      data: state
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type:"application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "money-tracker-backup.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function restorePick(){
+    el("filePicker").click();
+  }
+
+  async function restoreFromFile(file){
+    const text = await file.text();
+    let obj;
+    try { obj = JSON.parse(text); } catch { return alert("Invalid backup file."); }
+
+    const data = obj?.data;
+    if (!data || !Array.isArray(data.wallets) || !Array.isArray(data.transactions) || !Array.isArray(data.wants)) {
+      return alert("Backup file format not recognized.");
+    }
+    if (!confirm("Restore will replace current data on this device. Continue?")) return;
+
+    state = {
+      wallets: data.wallets.map(w=>({ id:Number(w.id)||Date.now(), name:String(w.name||"").trim(), balance:Number(w.balance||0) }))
+                          .filter(w=>w.name && Number.isFinite(w.balance)),
+      transactions: data.transactions.map(t=>({
+        id:Number(t.id)||Date.now(),
+        walletId:Number(t.walletId),
+        type:(String(t.type||"").toLowerCase()==="income"?"income":"expense"),
+        amount:Number(t.amount||0),
+        date:String(t.date||"").slice(0,10),
+        note:String(t.note||"")
+      })).filter(t=>Number.isFinite(t.amount) && t.amount>0 && t.date),
+      wants: data.wants.map(w=>({ id:Number(w.id)||Date.now(), name:String(w.name||"").trim(), price:Number(w.price||0), status:(w.status==="bought"?"bought":"planned") }))
+                        .filter(w=>w.name && Number.isFinite(w.price) && w.price>0)
+    };
+
+    seedIfEmpty();
+    save();
+    renderAll();
+    alert("Restore done!");
+  }
+
+  function clearAll(){
+    if (!confirm("Clear all data on this device?")) return;
+    state = { wallets: [], transactions: [], wants: [] };
+    seedIfEmpty();
+    save();
+    renderAll();
+  }
+
+  // ---------- Init wiring ----------
+  function escapeHtml(s){
+    return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+  }
+
+  function renderAll(){
+    renderWallets();
+    renderTransactions();
+    renderWants();
+    refreshTotal();
+  }
+
+  // buttons
+  el("btnAddWallet").addEventListener("click", addWallet);
+  el("btnEditBalance").addEventListener("click", editBalance);
+  el("btnRenameWallet").addEventListener("click", renameWallet);
+  el("btnDeleteWallet").addEventListener("click", deleteWallet);
+
+  el("txDate").value = todayISO();
+  el("txDate").addEventListener("change", renderTransactions);
+  el("btnAddExpense").addEventListener("click", ()=>addTransaction("expense"));
+  el("btnAddIncome").addEventListener("click", ()=>addTransaction("income"));
+  el("btnDeleteTx").addEventListener("click", deleteSelectedTx);
+
+  el("btnAddWant").addEventListener("click", addWant);
+  el("btnMarkBought").addEventListener("click", markBought);
+  el("btnDeleteWant").addEventListener("click", deleteWant);
+
+  el("btnBackup").addEventListener("click", backup);
+  el("btnRestore").addEventListener("click", restorePick);
+  el("btnClearAll").addEventListener("click", clearAll);
+
+  el("filePicker").addEventListener("change", async (e)=>{
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    await restoreFromFile(f);
+  });
+
+  // first load
+  load();
+  renderAll();
+</script>
+</body>
+</html>
